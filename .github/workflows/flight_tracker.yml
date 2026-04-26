@@ -2,8 +2,8 @@ name: Automated Flight Tracker
 
 on:
   schedule:
-    # Runs at 08:00 UTC every Sunday (prevents exceeding the 50 calls/month API quota)
-    - cron: '0 8 * * 0'
+    # Runs at 10:00 UTC every Monday
+    - cron: '0 10 * * 1'
   workflow_dispatch:
 
 permissions:
