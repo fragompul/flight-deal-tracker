@@ -4,14 +4,14 @@ import requests
 import time
 from datetime import datetime, timedelta
 
-# Environment Variables (Injected via GitHub Actions Secrets)
+# Environment Variables
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 PRICE_THRESHOLD_PER_PERSON = float(os.getenv("PRICE_THRESHOLD_PER_PERSON", 650))
 
-# API Configuration (Ensure you use the correct flights endpoint from RapidAPI)
-RAPIDAPI_HOST = "booking-com15.p.rapidapi.com"
+# API Configuration
+RAPIDAPI_HOST = "tripadvisor16.p.rapidapi.com"
 API_URL = f"https://{RAPIDAPI_HOST}/api/v1/flights/searchFlights"
 
 # Trip Configuration
@@ -51,31 +51,29 @@ def send_telegram_document():
         requests.post(url, data=data, files=files)
 
 def search_flights(origin: str, dest: str, dep_date: str, ret_date: str) -> list:
-    """Fetches flight offers from RapidAPI."""
+    """Fetches flight offers from TripAdvisor via RapidAPI."""
     headers = {
         "x-rapidapi-key": RAPIDAPI_KEY,
         "x-rapidapi-host": RAPIDAPI_HOST
     }
     
-    # Check the exact parameters required by your chosen RapidAPI endpoint
     querystring = {
-        "fromId": origin,
-        "toId": dest,
-        "departDate": dep_date,
+        "sourceAirportCode": origin,
+        "destinationAirportCode": dest,
+        "date": dep_date,
         "returnDate": ret_date,
         "adults": str(ADULTS),
-        "currency_code": "EUR"
+        "currencyCode": "EUR"
     }
     
     try:
         response = requests.get(API_URL, headers=headers, params=querystring)
         response.raise_for_status()
         
-        # Adjust parsing based on the actual JSON structure of the RapidAPI provider
         data = response.json()
-        return data.get("data", {}).get("flightOffers", [])
-    except Exception as e:
-        print(f"Error fetching data for {origin}-{dest} on {dep_date}: {e}")
+        return data.get("data", {}).get("flights", [])
+    except requests.exceptions.RequestException as e:
+        print(f"API request failed for {origin}-{dest} on {dep_date}: {e}")
         return []
 
 def main():
@@ -86,66 +84,54 @@ def main():
     best_deals = []
     new_records = []
 
-    # Iterate through every departure day in November
     while current_date <= END_DATE:
         str_dep = current_date.strftime("%Y-%m-%d")
         
-        # Iterate through the desired trip lengths
         for nights in NIGHTS:
             str_ret = (current_date + timedelta(days=nights)).strftime("%Y-%m-%d")
             
-            # Iterate through each Chinese hub
             for dest in DESTINATIONS:
                 flights = search_flights(ORIGIN, dest, str_dep, str_ret)
-                
-                # Sleep to respect RapidAPI rate limits (usually strictly enforced)
                 time.sleep(1.5) 
                 
                 for flight in flights:
                     try:
-                        # IMPORTANT: Adjust these keys based on the API's actual JSON response
-                        total_price = float(flight["price"]["total"])
+                        total_price = float(flight["purchaseLinks"][0]["totalPrice"])
                         price_per_person = total_price / ADULTS
                         
-                        outbound_stops = len(flight["itineraries"][0]["segments"]) - 1
-                        inbound_stops = len(flight["itineraries"][1]["segments"]) - 1
+                        outbound_stops = len(flight["segments"][0]["legs"]) - 1
+                        inbound_stops = len(flight["segments"][1]["legs"]) - 1
                         max_stops = max(outbound_stops, inbound_stops)
                         
-                        # Filter: Only flights with 1 stop maximum
                         if max_stops > 1:
                             continue
                             
-                        airline = flight["validatingAirlineCodes"][0]
+                        airline = flight["segments"][0]["legs"][0]["operatingCarrier"]["displayName"]
                         
-                        # Append for CSV logging
                         new_records.append([
                             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             ORIGIN, dest, str_dep, str_ret, nights,
                             total_price, price_per_person, airline, max_stops
                         ])
                         
-                        # Check against user threshold
                         if price_per_person <= PRICE_THRESHOLD_PER_PERSON:
                             best_deals.append(
                                 f"✈️ <b>{ORIGIN} ➔ {dest}</b>\n"
                                 f"📅 {str_dep} to {str_ret} ({nights} nights)\n"
-                                f"💶 <b>€{price_per_person:.2f}/pax</b> | Stops: {max_stops}"
+                                f"💶 <b>€{price_per_person:.2f}/pax</b> | Stops: {max_stops}\n"
+                                f"🏢 Airline: {airline}"
                             )
-                    except KeyError as e:
-                        print(f"Data parsing error. The API JSON structure might have changed: {e}")
+                    except (KeyError, IndexError, TypeError):
                         continue
         
         current_date += timedelta(days=1)
 
-    # Append new data to CSV
     if new_records:
         with open(CSV_FILE, mode='a', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerows(new_records)
 
-    # Trigger Telegram notifications if deals are found
     if best_deals:
-        # Cap at 10 deals to avoid Telegram message length limits
         msg = "🚨 <b>AMAZING FLIGHT DEALS DETECTED!</b> 🚨\n\n" + "\n\n".join(best_deals[:10])
         send_telegram_alert(msg)
         send_telegram_document()
