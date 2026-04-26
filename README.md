@@ -1,56 +1,94 @@
-# ✈️ Automated Flight Deal Tracker (RapidAPI Edition)
+# Automated Flight Deal Tracker: Serverless ETL Pipeline
 
-![Python](https://img.shields.io/badge/Python-3.10-blue?style=flat-square&logo=python)
-![GitHub Actions](https://img.shields.io/badge/Automated-GitHub_Actions-2088FF?style=flat-square&logo=github-actions)
-![Data](https://img.shields.io/badge/Storage-CSV-success?style=flat-square)
-![API](https://img.shields.io/badge/API-RapidAPI-0055FF?style=flat-square)
+[![Python](https://img.shields.io/badge/Python-3.10-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![GitHub Actions](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](#)
+[![API](https://img.shields.io/badge/Data_Provider-RapidAPI-0055FF?logo=api&logoColor=white)](#)
+[![Telegram](https://img.shields.io/badge/Alerts-Telegram_Bot-2CA5E0?logo=telegram&logoColor=white)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-An automated data pipeline and notification system that tracks flight prices to China. Built to find the optimal combination of dates, prices, and routing for a 4-person trip in November 2026.
+> **A robust, serverless Data Engineering pipeline designed to automatically scrape, process, and alert on optimal flight pricing using GitHub Actions and the Telegram API.**
 
-## 🚀 Overview
+## 📖 Project Overview
 
-Tracking flight prices manually for a wide range of dates and multiple destinations is inefficient. This project automates the workflow by:
+Finding the optimal combination of dates, prices, and routing for international flights is a time-consuming mathematical optimization problem. Traditional flight trackers lack the programmatic flexibility to filter by specific routing constraints (e.g., maximum number of layovers) across a wide matrix of dates.
 
-1. **Scraping** daily flight offers using flight aggregators via **RapidAPI**.
-2. **Filtering** the data based on strict criteria (max 1 stop, specific duration windows).
-3. **Storing** the historical pricing data in a `.csv` file directly in this repository.
-4. **Alerting** the user via a **Telegram Bot** when prices drop below a predefined threshold, automatically attaching the latest dataset.
+This project implements a fully automated **Extract, Transform, Load (ETL)** data pipeline deployed in a serverless environment. It queries live aviation data, processes nested and unstable JSON payloads, and builds a historical dataset of flight prices to China. When prices drop below a mathematically defined threshold, it pushes real-time alerts to a mobile device.
 
-The system is deployed completely serverless using **GitHub Actions**, running scheduled cron jobs twice a day.
+## ✨ Key Technical Features
 
-## 🛠️ Tech Stack & Architecture
-* **Language:** Python 3.10
-* **Data Provider:** Booking API via RapidAPI Hub
-* **Automation/CI:** GitHub Actions
-* **Storage:** CSV (Version-controlled)
-* **Notifications:** Telegram Bot API
+1. **Serverless Automation (CI/CD):** Completely independent deployment using GitHub Actions cron-jobs, eliminating the need for dedicated cloud compute instances (AWS EC2/Heroku).
+2. **Defensive API Integration:** Built-in fault tolerance. The pipeline dynamically handles RapidAPI rate-limits (HTTP 429) and mitigates silent API failures (e.g., string-wrapped JSON errors) using strict Python type-checking and exception handling.
+3. **Advanced Data Transformation:** Deep parsing of complex nested JSON structures from the Booking.com API to accurately compute total trip duration, isolate operating carriers, and strictly filter out itineraries with >1 layover.
+4. **Git-Backed Database:** Uses the repository itself as a storage layer. The automated bot natively commits and pushes newly appended data back to `flight_history.csv` after every successful run.
+5. **Real-Time Telemetry & Alerting:** Integrates the Telegram Bot API to deliver formatted HTML payload alerts and directly attach the updated dataset to the user's smartphone.
 
-## 📈 Data Science Roadmap
+---
 
-Since the project stores all historical queries in `flight_history.csv`, it serves as a foundational data collection tool for future Machine Learning applications:
-- [ ] **Exploratory Data Analysis (EDA):** Identify which days of the week yield the cheapest bookings.
-- [ ] **Price Prediction Modeling:** Train a Time-Series model (e.g., ARIMA or Prophet) to forecast price drops.
-- [ ] **Expansion:** Integrate hotel APIs to track full vacation package costs.
+## 📂 Repository Architecture
 
-## ⚙️ Setup & Local Usage
+```text
+├── .github/workflows/
+│   └── flight_tracker.yml      # CI/CD pipeline definition and Cron scheduling
+├── main.py                     # Core ETL engine and API orchestration
+├── requirements.txt            # Python dependencies (Requests, etc.)
+└── flight_history.csv          # Self-updating database (Auto-committed by bot)
+```
 
-If you want to run this project locally or fork it:
+---
 
-1. Clone the repository.
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Set up your environment variables locally in a .env file (ensure this is in your .gitignore):
-   ```bash
-   RAPIDAPI_KEY=your_rapidapi_key
-   TELEGRAM_TOKEN=your_bot_token
-   TELEGRAM_CHAT_ID=your_chat_id
-   PRICE_THRESHOLD_PER_PERSON=650
-   ```
-4. Run the script:
-   ```bash
-   python main.py
-   ```
+## ⚙️ How It Works (The Pipeline)
 
-**Note**: Ensure you subscribe to the corresponding Flight API on the RapidAPI platform to obtain a valid API Key and avoid hitting free-tier rate limits.
+1. **Extract:** The GitHub Action boots a Ubuntu container, injects securely encrypted API Keys via Repository Secrets, and queries the RapidAPI Flight endpoint for predefined routes.
+2. **Transform:** The Python engine validates the payload, discards malformed data, extracts base units and nanos to calculate exact Euro pricing, counts flight legs, and discards any route exceeding the strict layover threshold.
+3. **Load & Alert:** Validated deals are appended to the CSV file. If the `Price_Per_Person_EUR` is $\le 650$€, a POST request triggers the Telegram Bot. Finally, the Git bot commits the new data state to the main branch.
+
+---
+
+## 🚀 Getting Started (Local Execution)
+
+If you wish to fork this project and run the pipeline locally:
+
+**1. Clone the repository:**
+```bash
+git clone [https://github.com/fragompul/flight-deal-tracker.git](https://github.com/fragompul/flight-deal-tracker.git)
+cd flight-deal-tracker
+```
+
+**2. Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+**3. Configure Environment Variables:**
+Set up your local `.env` file (ensure this is in your `.gitignore` to protect your credentials):
+```text
+RAPIDAPI_KEY=your_rapidapi_key
+TELEGRAM_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+PRICE_THRESHOLD_PER_PERSON=650
+```
+
+**4. Execute the Tracker:**
+```bash
+python main.py
+```
+
+---
+
+## 📈 Data Science & ML Roadmap
+
+By continuously running this pipeline, `flight_history.csv` accumulates high-quality, normalized time-series data. Future iterations of this project will focus on predictive analytics:
+- [ ] **Exploratory Data Analysis (EDA):** Visualizing historical price volatility based on the days left to departure.
+- [ ] **Time-Series Forecasting:** Training an ARIMA or Prophet model to predict local price minima and algorithmically recommend the exact day to purchase tickets.
+
+---
+
+## Author
+
+**Francisco Javier Gómez Pulido**
+
+*Machine Learning Engineer @ IMSE-cnm (CSIC) | Double Major in Mathematics & Computer Science | Master's in Artificial Intelligence*
+
+📫 **Let's connect:**
+* **LinkedIn:** [linkedin.com/in/frangomezpulido](https://www.linkedin.com/in/frangomezpulido)
+* **GitHub:** [github.com/fragompul](https://github.com/fragompul)
