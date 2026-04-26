@@ -1,2 +1,2 @@
 # flight-deal-tracker
-Automated flight tracker using Amadeus API, GitHub Actions, and Telegram alerts.
+Automated flight tracker to China using RapidAPI, GitHub Actions, and Telegram alerts.
