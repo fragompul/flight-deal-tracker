@@ -16,8 +16,10 @@ API_URL = f"https://{RAPIDAPI_HOST}/api/v1/flights/searchFlights"
 
 # Trip Configuration
 ORIGIN = "MAD"
-DESTINATIONS = ["PEK", "PKX", "PVG", "CAN"]
-NIGHTS = [13, 14, 15]
+#DESTINATIONS = ["PEK", "PKX", "PVG", "CAN"]
+#NIGHTS = [13, 14, 15]
+DESTINATIONS = ["PEK"]
+NIGHTS = [14]
 ADULTS = 4
 CSV_FILE = "flight_history.csv"
 
