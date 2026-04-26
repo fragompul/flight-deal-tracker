@@ -15,15 +15,15 @@ PRICE_THRESHOLD_PER_PERSON = float(os.getenv("PRICE_THRESHOLD_PER_PERSON", 650))
 RAPIDAPI_HOST = "booking-com15.p.rapidapi.com"
 API_URL = f"https://{RAPIDAPI_HOST}/api/v1/flights/searchFlights"
 
-# Trip Configuration (Optimized for 50 requests/month limit)
+# Trip Configuration
 ORIGIN = "MAD"
 DESTINATIONS = ["PEK", "PVG"]
-NIGHTS = [14]
+NIGHTS = [16, 17]
 ADULTS = 4
 CSV_FILE = "flight_history.csv"
 
-# Search Window: First weekend of November 2026 (Thursday to Sunday)
-START_DATE = datetime.strptime("2026-11-05", "%Y-%m-%d")
+# Search Window: November 1st to November 8th, 2026
+START_DATE = datetime.strptime("2026-11-01", "%Y-%m-%d")
 END_DATE = datetime.strptime("2026-11-08", "%Y-%m-%d")
 
 def init_csv():
@@ -41,7 +41,9 @@ def send_telegram_alert(message: str):
     """Sends a formatted HTML message via Telegram Bot."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
-    requests.post(url, json=payload)
+    response = requests.post(url, json=payload)
+    if response.status_code != 200:
+        print(f"Telegram Alert Delivery Failed: {response.text}")
 
 def send_telegram_document():
     """Sends the operational CSV dataset to the Telegram chat."""
@@ -49,7 +51,48 @@ def send_telegram_document():
     with open(CSV_FILE, 'rb') as f:
         files = {'document': f}
         data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': 'SYSTEM ALERT: Latest flight history dataset attached.'}
-        requests.post(url, data=data, files=files)
+        response = requests.post(url, data=data, files=files)
+        if response.status_code != 200:
+            print(f"Telegram Document Delivery Failed: {response.text}")
+
+def format_segment(segment: dict) -> str:
+    """Formats a flight segment (outbound/inbound) into a highly detailed readable string."""
+    legs = segment.get("legs", [])
+    if not legs: return "N/A\n"
+    
+    # Extract route (e.g., MAD ➔ AMS ➔ PEK)
+    route = legs[0].get("departureAirport", {}).get("code", "Unknown")
+    for leg in legs:
+        route += f" ➔ {leg.get('arrivalAirport', {}).get('code', 'Unknown')}"
+        
+    details = ""
+    for i, leg in enumerate(legs):
+        # Format times
+        dep_time = leg.get("departureTime", "").replace("T", " ")[:-3]
+        arr_time = leg.get("arrivalTime", "").replace("T", " ")[:-3]
+        
+        # Extract carrier
+        carriers = leg.get("carriersData", [])
+        airline = carriers[0].get("name", "Unknown") if carriers else "Unknown"
+        
+        details += f"  • {leg.get('departureAirport', {}).get('code', '')} ({dep_time}) ➔ {leg.get('arrivalAirport', {}).get('code', '')} ({arr_time}) [{airline}]\n"
+        
+        # Calculate layover if not the last leg
+        if i < len(legs) - 1:
+            try:
+                next_dep = datetime.strptime(legs[i+1]["departureTime"], "%Y-%m-%dT%H:%M:%S")
+                curr_arr = datetime.strptime(leg["arrivalTime"], "%Y-%m-%dT%H:%M:%S")
+                layover_sec = (next_dep - curr_arr).total_seconds()
+                layover_h = int(layover_sec // 3600)
+                layover_m = int((layover_sec % 3600) // 60)
+                details += f"    ⏳ <i>Layover: {layover_h}h {layover_m}m in {leg.get('arrivalAirport', {}).get('code', '')}</i>\n"
+            except Exception:
+                pass
+                
+    total_h = int(segment.get("totalTime", 0) // 3600)
+    total_m = int((segment.get("totalTime", 0) % 3600) // 60)
+    
+    return f"🗺️ <b>{route}</b> (Total Time: {total_h}h {total_m}m)\n{details}"
 
 def search_flights(origin: str, dest: str, dep_date: str, ret_date: str) -> list:
     """Fetches flight offers from the Booking.com RapidAPI endpoint."""
@@ -74,37 +117,22 @@ def search_flights(origin: str, dest: str, dep_date: str, ret_date: str) -> list
         
         data = response.json()
         
-        # 1. Fallback for string-wrapped JSON
         if isinstance(data, str):
             try:
                 data = json.loads(data)
             except json.JSONDecodeError:
-                print(f"API returned unexpected text: {data[:200]}")
                 return []
                 
-        # 2. Safe dictionary extraction
         if isinstance(data, dict):
-            # Check for explicit API errors
             if data.get("status") is False:
-                print(f"API Internal Error: {data.get('message', 'No message')}")
                 return []
-                
-            # Safely get the 'data' payload
             api_data = data.get("data", {})
-            
-            # Defensive check: if 'data' contains a string instead of a dictionary/list
             if isinstance(api_data, str):
-                print(f"API returned a string inside 'data' payload: {api_data[:200]}")
                 return []
-                
-            # Extract flights if api_data is a dictionary
             if isinstance(api_data, dict):
                 return api_data.get("flightOffers", api_data.get("flights", []))
-                
-            # Extract flights if api_data is directly a list
             if isinstance(api_data, list):
                 return api_data
-                
         return []
         
     except requests.exceptions.RequestException as e:
@@ -134,7 +162,7 @@ def main():
                         # 1. Routing and Stops Parsing
                         segments = flight.get("segments", [])
                         if len(segments) < 2:
-                            continue # Ensure it is a round-trip
+                            continue 
                             
                         outbound_legs = segments[0].get("legs", [])
                         inbound_legs = segments[1].get("legs", [])
@@ -143,10 +171,7 @@ def main():
                         inbound_stops = len(inbound_legs) - 1
                         max_stops = max(outbound_stops, inbound_stops)
                         
-                        if max_stops > 1:
-                            continue
-                            
-                        # 2. Airline Parsing
+                        # 2. Airline Parsing (for CSV)
                         try:
                             airline = outbound_legs[0]["carriersData"][0]["name"]
                         except (KeyError, IndexError):
@@ -169,17 +194,27 @@ def main():
                             total_price, price_per_person, airline, max_stops
                         ])
                         
-                        # 5. Threshold Validation
+                        # 5. Threshold & Quality Validation for Alerts
                         if price_per_person <= PRICE_THRESHOLD_PER_PERSON:
-                            best_deals.append(
-                                f"Route: <b>{ORIGIN} -> {dest}</b>\n"
-                                f"Dates: {str_dep} to {str_ret} ({nights} nights)\n"
-                                f"Price: <b>EUR {price_per_person:.2f}/pax</b> | Stops: {max_stops}\n"
-                                f"Airline: {airline}"
+                            outbound_h = segments[0].get("totalTime", 0) / 3600
+                            inbound_h = segments[1].get("totalTime", 0) / 3600
+                            
+                            meets_ideal_criteria = (max_stops <= 1) and (outbound_h <= 18) and (inbound_h <= 18)
+                            
+                            warning_tag = ""
+                            if not meets_ideal_criteria:
+                                warning_tag = "⚠️ <i>NOTE: This itinerary exceeds 1 stop or 18h total flight time.</i>\n"
+                                
+                            deal_msg = (
+                                f"💶 <b>EUR {price_per_person:.2f}/pax</b> (Total: EUR {total_price:.2f})\n"
+                                f"{warning_tag}"
+                                f"📅 <b>{nights} Nights</b> ({str_dep} to {str_ret})\n\n"
+                                f"🛫 <b>OUTBOUND:</b>\n{format_segment(segments[0])}\n"
+                                f"🛬 <b>INBOUND:</b>\n{format_segment(segments[1])}"
                             )
+                            best_deals.append(deal_msg)
                             
                     except Exception as e:
-                        print(f"Data mapping error on flight token: {e}")
                         continue
         
         current_date += timedelta(days=1)
@@ -190,7 +225,8 @@ def main():
             writer.writerows(new_records)
 
     if best_deals:
-        msg = "<b>CRITICAL UPDATE: FLIGHT DEALS DETECTED</b>\n\n" + "\n\n".join(best_deals[:10])
+        # Cap at 5 deals to prevent exceeding Telegram's message length limits
+        msg = "<b>🚨 CRITICAL UPDATE: FLIGHT DEALS DETECTED 🚨</b>\n\n" + "\n--------------------\n\n".join(best_deals[:5])
         send_telegram_alert(msg)
         send_telegram_document()
         print("Alert notifications and dataset successfully transmitted via Telegram.")
