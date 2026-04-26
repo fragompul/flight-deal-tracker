@@ -1,0 +1,41 @@
+name: Automated Flight Tracker
+
+on:
+  schedule:
+    # Runs at 08:00 and 20:00 UTC every day
+    - cron: '0 8,20 * * *'
+  workflow_dispatch: # Allows manual trigger from the Actions tab
+
+permissions:
+  contents: write # Required to push the updated CSV back to the repo
+
+jobs:
+  scrape-flights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Tracker Script
+        env:
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PRICE_THRESHOLD_PER_PERSON: ${{ secrets.PRICE_THRESHOLD_PER_PERSON }}
+        run: python main.py
+
+      - name: Commit and Push Updated Dataset
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git add flight_history.csv
+          git commit -m "📊 Action: Update flight history dataset" || echo "No changes to commit"
+          git push
