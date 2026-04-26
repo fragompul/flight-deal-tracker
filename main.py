@@ -25,7 +25,8 @@ CSV_FILE = "flight_history.csv"
 
 # Search Window: All of November 2026
 START_DATE = datetime.strptime("2026-11-01", "%Y-%m-%d")
-END_DATE = datetime.strptime("2026-11-30", "%Y-%m-%d")
+#END_DATE = datetime.strptime("2026-11-30", "%Y-%m-%d")
+END_DATE = datetime.strptime("2026-11-01", "%Y-%m-%d")
 
 def init_csv():
     """Initializes the CSV file with headers if it does not exist."""
