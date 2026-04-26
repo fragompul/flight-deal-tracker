@@ -11,21 +11,20 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 PRICE_THRESHOLD_PER_PERSON = float(os.getenv("PRICE_THRESHOLD_PER_PERSON", 650))
 
 # API Configuration
-RAPIDAPI_HOST = "tripadvisor16.p.rapidapi.com"
+RAPIDAPI_HOST = "booking-com15.p.rapidapi.com"
 API_URL = f"https://{RAPIDAPI_HOST}/api/v1/flights/searchFlights"
 
 # Trip Configuration
 ORIGIN = "MAD"
-#DESTINATIONS = ["PEK", "PKX", "PVG", "CAN"]
-#NIGHTS = [13, 14, 15]
-DESTINATIONS = ["PEK"]
+# FOR TESTING: Reduced to 1 destination and 1 length to prevent API limits (HTTP 429)
+DESTINATIONS = ["PEK"] 
 NIGHTS = [14]
 ADULTS = 4
 CSV_FILE = "flight_history.csv"
 
-# Search Window: All of November 2026
+# Search Window
+# FOR TESTING: Reduced to a single day to prevent API limits
 START_DATE = datetime.strptime("2026-11-01", "%Y-%m-%d")
-#END_DATE = datetime.strptime("2026-11-30", "%Y-%m-%d")
 END_DATE = datetime.strptime("2026-11-01", "%Y-%m-%d")
 
 def init_csv():
@@ -40,33 +39,35 @@ def init_csv():
             ])
 
 def send_telegram_alert(message: str):
-    """Sends a formatted HTML message via Telegram Bot."""
+    """Sends a formatted text message via Telegram Bot."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
     requests.post(url, json=payload)
 
 def send_telegram_document():
-    """Sends the actual CSV file to the Telegram chat."""
+    """Sends the operational CSV dataset to the Telegram chat."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
     with open(CSV_FILE, 'rb') as f:
         files = {'document': f}
-        data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': '📊 Latest flight history dataset attached.'}
+        data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': 'SYSTEM ALERT: Latest flight history dataset attached.'}
         requests.post(url, data=data, files=files)
 
 def search_flights(origin: str, dest: str, dep_date: str, ret_date: str) -> list:
-    """Fetches flight offers from TripAdvisor via RapidAPI."""
+    """Fetches flight offers from the Booking.com RapidAPI endpoint."""
     headers = {
         "x-rapidapi-key": RAPIDAPI_KEY,
         "x-rapidapi-host": RAPIDAPI_HOST
     }
     
+    # Notice the .AIRPORT suffix required by this specific API
     querystring = {
-        "sourceAirportCode": origin,
-        "destinationAirportCode": dest,
-        "date": dep_date,
+        "fromId": f"{origin}.AIRPORT",
+        "toId": f"{dest}.AIRPORT",
+        "departDate": dep_date,
         "returnDate": ret_date,
+        "pageNo": "1",
         "adults": str(ADULTS),
-        "currencyCode": "EUR"
+        "currency_code": "EUR"
     }
     
     try:
@@ -74,13 +75,13 @@ def search_flights(origin: str, dest: str, dep_date: str, ret_date: str) -> list
         response.raise_for_status()
         
         data = response.json()
-        return data.get("data", {}).get("flights", [])
+        return data.get("data", {}).get("flightOffers", [])
     except requests.exceptions.RequestException as e:
         print(f"API request failed for {origin}-{dest} on {dep_date}: {e}")
         return []
 
 def main():
-    print(f"[{datetime.now()}] Starting flight search for {ADULTS} passengers...")
+    print(f"[{datetime.now()}] Starting flight search pipeline for {ADULTS} passengers...")
     init_csv()
     
     current_date = START_DATE
@@ -95,21 +96,22 @@ def main():
             
             for dest in DESTINATIONS:
                 flights = search_flights(ORIGIN, dest, str_dep, str_ret)
-                time.sleep(1.5) 
+                time.sleep(2.0) # Mandatory delay to respect API rate limits
                 
                 for flight in flights:
                     try:
-                        total_price = float(flight["purchaseLinks"][0]["totalPrice"])
+                        # Parsing logic - may need adjustment based on the exact JSON schema
+                        total_price = float(flight["price"]["total"])
                         price_per_person = total_price / ADULTS
                         
-                        outbound_stops = len(flight["segments"][0]["legs"]) - 1
-                        inbound_stops = len(flight["segments"][1]["legs"]) - 1
+                        outbound_stops = len(flight["itineraries"][0]["segments"]) - 1
+                        inbound_stops = len(flight["itineraries"][1]["segments"]) - 1
                         max_stops = max(outbound_stops, inbound_stops)
                         
                         if max_stops > 1:
                             continue
                             
-                        airline = flight["segments"][0]["legs"][0]["operatingCarrier"]["displayName"]
+                        airline = flight["validatingAirlineCodes"][0]
                         
                         new_records.append([
                             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -119,12 +121,13 @@ def main():
                         
                         if price_per_person <= PRICE_THRESHOLD_PER_PERSON:
                             best_deals.append(
-                                f"✈️ <b>{ORIGIN} ➔ {dest}</b>\n"
-                                f"📅 {str_dep} to {str_ret} ({nights} nights)\n"
-                                f"💶 <b>€{price_per_person:.2f}/pax</b> | Stops: {max_stops}\n"
-                                f"🏢 Airline: {airline}"
+                                f"Route: {ORIGIN} -> {dest}\n"
+                                f"Dates: {str_dep} to {str_ret} ({nights} nights)\n"
+                                f"Price: EUR {price_per_person:.2f}/pax | Stops: {max_stops}\n"
+                                f"Airline: {airline}"
                             )
                     except (KeyError, IndexError, TypeError):
+                        # Skip malformed flight objects silently
                         continue
         
         current_date += timedelta(days=1)
@@ -135,12 +138,12 @@ def main():
             writer.writerows(new_records)
 
     if best_deals:
-        msg = "🚨 <b>AMAZING FLIGHT DEALS DETECTED!</b> 🚨\n\n" + "\n\n".join(best_deals[:10])
+        msg = "<b>CRITICAL UPDATE: FLIGHT DEALS DETECTED</b>\n\n" + "\n\n".join(best_deals[:10])
         send_telegram_alert(msg)
         send_telegram_document()
-        print("Alerts and dataset sent via Telegram.")
+        print("Alert notifications and dataset successfully transmitted via Telegram.")
     else:
-        print("No flights below threshold today. History updated.")
+        print("No flights meeting the specified threshold were identified. Dataset updated.")
 
 if __name__ == "__main__":
     main()
