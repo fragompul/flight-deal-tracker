@@ -32,6 +32,13 @@ jobs:
           PRICE_THRESHOLD_PER_PERSON: ${{ secrets.PRICE_THRESHOLD_PER_PERSON }}
         run: python main.py
 
+      - name: Upload Debug Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flight-json-log
+          path: debug_flight.json
+
       - name: Commit and Push Updated Dataset
         run: |
           git config --local user.email "action@github.com"
