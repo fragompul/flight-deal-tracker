@@ -74,20 +74,37 @@ def search_flights(origin: str, dest: str, dep_date: str, ret_date: str) -> list
         
         data = response.json()
         
-        # Security parsing for unexpected API plain text errors
+        # 1. Fallback for string-wrapped JSON
         if isinstance(data, str):
             try:
                 data = json.loads(data)
             except json.JSONDecodeError:
-                print(f"API Returned a plain string message: {data[:200]}")
+                print(f"API returned unexpected text: {data[:200]}")
                 return []
                 
+        # 2. Safe dictionary extraction
         if isinstance(data, dict):
+            # Check for explicit API errors
             if data.get("status") is False:
                 print(f"API Internal Error: {data.get('message', 'No message')}")
                 return []
-            return data.get("data", {}).get("flightOffers", [])
+                
+            # Safely get the 'data' payload
+            api_data = data.get("data", {})
             
+            # Defensive check: if 'data' contains a string instead of a dictionary/list
+            if isinstance(api_data, str):
+                print(f"API returned a string inside 'data' payload: {api_data[:200]}")
+                return []
+                
+            # Extract flights if api_data is a dictionary
+            if isinstance(api_data, dict):
+                return api_data.get("flightOffers", api_data.get("flights", []))
+                
+            # Extract flights if api_data is directly a list
+            if isinstance(api_data, list):
+                return api_data
+                
         return []
         
     except requests.exceptions.RequestException as e:
