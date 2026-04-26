@@ -1,5 +1,6 @@
 import os
 import csv
+import json
 import requests
 import time
 from datetime import datetime, timedelta
@@ -14,18 +15,16 @@ PRICE_THRESHOLD_PER_PERSON = float(os.getenv("PRICE_THRESHOLD_PER_PERSON", 650))
 RAPIDAPI_HOST = "booking-com15.p.rapidapi.com"
 API_URL = f"https://{RAPIDAPI_HOST}/api/v1/flights/searchFlights"
 
-# Trip Configuration
+# Trip Configuration (Optimized for 50 requests/month limit)
 ORIGIN = "MAD"
-# FOR TESTING: Reduced to 1 destination and 1 length to prevent API limits (HTTP 429)
-DESTINATIONS = ["PEK"] 
+DESTINATIONS = ["PEK", "PVG"]
 NIGHTS = [14]
 ADULTS = 4
 CSV_FILE = "flight_history.csv"
 
-# Search Window
-# FOR TESTING: Reduced to a single day to prevent API limits
-START_DATE = datetime.strptime("2026-11-01", "%Y-%m-%d")
-END_DATE = datetime.strptime("2026-11-01", "%Y-%m-%d")
+# Search Window: First weekend of November 2026 (Thursday to Sunday)
+START_DATE = datetime.strptime("2026-11-05", "%Y-%m-%d")
+END_DATE = datetime.strptime("2026-11-08", "%Y-%m-%d")
 
 def init_csv():
     """Initializes the CSV file with headers if it does not exist."""
@@ -39,7 +38,7 @@ def init_csv():
             ])
 
 def send_telegram_alert(message: str):
-    """Sends a formatted text message via Telegram Bot."""
+    """Sends a formatted HTML message via Telegram Bot."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
     requests.post(url, json=payload)
@@ -73,45 +72,24 @@ def search_flights(origin: str, dest: str, dep_date: str, ret_date: str) -> list
         response = requests.get(API_URL, headers=headers, params=querystring)
         response.raise_for_status()
         
-        # 1. Intentamos leer la respuesta
         data = response.json()
         
-        # 2. Seguridad: Si la API devuelve un string (error silencioso o JSON mal formado)
-        import json
+        # Security parsing for unexpected API plain text errors
         if isinstance(data, str):
             try:
-                data = json.loads(data) # Intentamos decodificar si es JSON oculto
+                data = json.loads(data)
             except json.JSONDecodeError:
                 print(f"API Returned a plain string message: {data[:200]}")
                 return []
                 
-        # 3. Extracción segura
         if isinstance(data, dict):
-            # Comprobar si hay un error documentado dentro del JSON
-            if data.get("status") is False or not data.get("status", True):
-                print(f"API Internal Error: {data.get('message', 'No message provided')}")
+            if data.get("status") is False:
+                print(f"API Internal Error: {data.get('message', 'No message')}")
                 return []
-                
-            api_data = data.get("data", {})
+            return data.get("data", {}).get("flightOffers", [])
             
-            # Booking puede devolver un diccionario o directamente una lista
-            if isinstance(api_data, dict):
-                if "flightOffers" in api_data:
-                    return api_data.get("flightOffers", [])
-                elif "flights" in api_data:
-                    return api_data.get("flights", [])
-                else:
-                    print(f"Missing flight keys. Found keys: {list(api_data.keys())}")
-                    return []
-            elif isinstance(api_data, list):
-                return api_data
-            else:
-                print(f"Unexpected format inside 'data': {type(api_data)}")
-                return []
-        else:
-            print(f"Unexpected Top-Level JSON format: {type(data)}")
-            return []
-            
+        return []
+        
     except requests.exceptions.RequestException as e:
         print(f"API request failed for {origin}-{dest} on {dep_date}: {e}")
         return []
@@ -132,21 +110,59 @@ def main():
             
             for dest in DESTINATIONS:
                 flights = search_flights(ORIGIN, dest, str_dep, str_ret)
-                time.sleep(2.0) # Mandatory delay to respect API rate limits
+                time.sleep(2.0) # Delay to respect API rate limits
                 
                 for flight in flights:
                     try:
-                        # MODO DEPURACIÓN: Guardar la estructura en un archivo
-                        import json
-                        with open("debug_flight.json", "w", encoding="utf-8") as f:
-                            json.dump(flight, f, indent=2)
+                        # 1. Routing and Stops Parsing
+                        segments = flight.get("segments", [])
+                        if len(segments) < 2:
+                            continue # Ensure it is a round-trip
+                            
+                        outbound_legs = segments[0].get("legs", [])
+                        inbound_legs = segments[1].get("legs", [])
                         
-                        print("Archivo debug_flight.json generado correctamente.")
-                        # Forzamos salida limpia para que GitHub Actions continúe al siguiente paso
-                        raise SystemExit(0) 
+                        outbound_stops = len(outbound_legs) - 1
+                        inbound_stops = len(inbound_legs) - 1
+                        max_stops = max(outbound_stops, inbound_stops)
                         
+                        if max_stops > 1:
+                            continue
+                            
+                        # 2. Airline Parsing
+                        try:
+                            airline = outbound_legs[0]["carriersData"][0]["name"]
+                        except (KeyError, IndexError):
+                            airline = "Unknown Airline"
+                        
+                        # 3. Price Parsing
+                        try:
+                            units = flight["priceBreakdown"]["total"].get("units", 0)
+                            nanos = flight["priceBreakdown"]["total"].get("nanos", 0)
+                            total_price = float(units) + (float(nanos) / 1000000000.0)
+                        except KeyError:
+                            continue
+                            
+                        price_per_person = total_price / ADULTS
+                        
+                        # 4. Data Logging
+                        new_records.append([
+                            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            ORIGIN, dest, str_dep, str_ret, nights,
+                            total_price, price_per_person, airline, max_stops
+                        ])
+                        
+                        # 5. Threshold Validation
+                        if price_per_person <= PRICE_THRESHOLD_PER_PERSON:
+                            best_deals.append(
+                                f"Route: <b>{ORIGIN} -> {dest}</b>\n"
+                                f"Dates: {str_dep} to {str_ret} ({nights} nights)\n"
+                                f"Price: <b>EUR {price_per_person:.2f}/pax</b> | Stops: {max_stops}\n"
+                                f"Airline: {airline}"
+                            )
+                            
                     except Exception as e:
-                        print(f"Data mapping error: {e}")
+                        print(f"Data mapping error on flight token: {e}")
                         continue
         
         current_date += timedelta(days=1)
