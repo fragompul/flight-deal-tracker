@@ -59,7 +59,6 @@ def search_flights(origin: str, dest: str, dep_date: str, ret_date: str) -> list
         "x-rapidapi-host": RAPIDAPI_HOST
     }
     
-    # Notice the .AIRPORT suffix required by this specific API
     querystring = {
         "fromId": f"{origin}.AIRPORT",
         "toId": f"{dest}.AIRPORT",
@@ -74,8 +73,45 @@ def search_flights(origin: str, dest: str, dep_date: str, ret_date: str) -> list
         response = requests.get(API_URL, headers=headers, params=querystring)
         response.raise_for_status()
         
+        # 1. Intentamos leer la respuesta
         data = response.json()
-        return data.get("data", {}).get("flightOffers", [])
+        
+        # 2. Seguridad: Si la API devuelve un string (error silencioso o JSON mal formado)
+        import json
+        if isinstance(data, str):
+            try:
+                data = json.loads(data) # Intentamos decodificar si es JSON oculto
+            except json.JSONDecodeError:
+                print(f"API Returned a plain string message: {data[:200]}")
+                return []
+                
+        # 3. Extracción segura
+        if isinstance(data, dict):
+            # Comprobar si hay un error documentado dentro del JSON
+            if data.get("status") is False or not data.get("status", True):
+                print(f"API Internal Error: {data.get('message', 'No message provided')}")
+                return []
+                
+            api_data = data.get("data", {})
+            
+            # Booking puede devolver un diccionario o directamente una lista
+            if isinstance(api_data, dict):
+                if "flightOffers" in api_data:
+                    return api_data.get("flightOffers", [])
+                elif "flights" in api_data:
+                    return api_data.get("flights", [])
+                else:
+                    print(f"Missing flight keys. Found keys: {list(api_data.keys())}")
+                    return []
+            elif isinstance(api_data, list):
+                return api_data
+            else:
+                print(f"Unexpected format inside 'data': {type(api_data)}")
+                return []
+        else:
+            print(f"Unexpected Top-Level JSON format: {type(data)}")
+            return []
+            
     except requests.exceptions.RequestException as e:
         print(f"API request failed for {origin}-{dest} on {dep_date}: {e}")
         return []
