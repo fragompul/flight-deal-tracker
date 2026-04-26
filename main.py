@@ -126,8 +126,8 @@ def main():
                                 f"Price: EUR {price_per_person:.2f}/pax | Stops: {max_stops}\n"
                                 f"Airline: {airline}"
                             )
-                    except (KeyError, IndexError, TypeError):
-                        # Skip malformed flight objects silently
+                    except Exception as e:
+                        print(f"Data mapping error: {e}")
                         continue
         
         current_date += timedelta(days=1)
