@@ -136,32 +136,15 @@ def main():
                 
                 for flight in flights:
                     try:
-                        # Parsing logic - may need adjustment based on the exact JSON schema
-                        total_price = float(flight["price"]["total"])
-                        price_per_person = total_price / ADULTS
+                        # MODO DEPURACIÓN: Imprimir la estructura del primer vuelo
+                        import json
+                        print("ESTRUCTURA DEL VUELO ENCONTRADA:")
+                        print(json.dumps(flight, indent=2))
+                        # Forzamos un error intencionado para detener el script y no gastar cuota
+                        raise SystemExit("Ejecución detenida intencionadamente para leer el log.")
                         
-                        outbound_stops = len(flight["itineraries"][0]["segments"]) - 1
-                        inbound_stops = len(flight["itineraries"][1]["segments"]) - 1
-                        max_stops = max(outbound_stops, inbound_stops)
+                        # (El código de extracción original irá aquí una vez conozcamos la estructura)
                         
-                        if max_stops > 1:
-                            continue
-                            
-                        airline = flight["validatingAirlineCodes"][0]
-                        
-                        new_records.append([
-                            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            ORIGIN, dest, str_dep, str_ret, nights,
-                            total_price, price_per_person, airline, max_stops
-                        ])
-                        
-                        if price_per_person <= PRICE_THRESHOLD_PER_PERSON:
-                            best_deals.append(
-                                f"Route: {ORIGIN} -> {dest}\n"
-                                f"Dates: {str_dep} to {str_ret} ({nights} nights)\n"
-                                f"Price: EUR {price_per_person:.2f}/pax | Stops: {max_stops}\n"
-                                f"Airline: {airline}"
-                            )
                     except Exception as e:
                         print(f"Data mapping error: {e}")
                         continue
