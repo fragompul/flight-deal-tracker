@@ -4,6 +4,7 @@
 [![GitHub Actions](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF?logo=github-actions&logoColor=white)](#)
 [![API](https://img.shields.io/badge/Data_Provider-RapidAPI-0055FF?logo=api&logoColor=white)](#)
 [![Telegram](https://img.shields.io/badge/Alerts-Telegram_Bot-2CA5E0?logo=telegram&logoColor=white)](#)
+[![Streamlit](https://img.shields.io/badge/Dashboard-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 > **A robust, serverless Data Engineering pipeline designed to automatically scrape, process, and alert on optimal flight pricing using GitHub Actions and the Telegram API.**
@@ -21,6 +22,7 @@ This project implements a fully automated **Extract, Transform, Load (ETL)** dat
 3. **Advanced Data Transformation:** Deep parsing of complex nested JSON structures from the Booking.com API to accurately compute total trip duration, isolate operating carriers, and strictly filter out itineraries with >1 layover.
 4. **Git-Backed Database:** Uses the repository itself as a storage layer. The automated bot natively commits and pushes newly appended data back to `flight_history.csv` after every successful run.
 5. **Real-Time Telemetry & Alerting:** Integrates the Telegram Bot API to deliver formatted HTML payload alerts and directly attach the updated dataset to the user's smartphone.
+6. **Interactive Analytics Dashboard:** Includes a supplementary Streamlit web application to visually explore the generated CSV dataset, featuring intelligent deduplication and Plotly-based price volatility matrices.
 
 ---
 
@@ -30,7 +32,8 @@ This project implements a fully automated **Extract, Transform, Load (ETL)** dat
 ├── .github/workflows/
 │   └── flight_tracker.yml      # CI/CD pipeline definition and Cron scheduling
 ├── main.py                     # Core ETL engine and API orchestration
-├── requirements.txt            # Python dependencies (Requests, etc.)
+├── app.py                      # Interactive Streamlit analytics dashboard
+├── requirements.txt            # Python dependencies (Requests, Pandas, Streamlit, etc.)
 └── flight_history.csv          # Self-updating database (Auto-committed by bot)
 ```
 
@@ -71,6 +74,11 @@ PRICE_THRESHOLD_PER_PERSON=650
 **4. Execute the Tracker:**
 ```bash
 python main.py
+```
+
+**5. Launch the Analytics Dashboard (Optional):**
+```bash
+streamlit run app.py
 ```
 
 ---
