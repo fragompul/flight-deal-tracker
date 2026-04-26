@@ -2,12 +2,12 @@ name: Automated Flight Tracker
 
 on:
   schedule:
-    # Runs at 08:00 and 20:00 UTC every day
-    - cron: '0 8,20 * * *'
-  workflow_dispatch: # Allows manual trigger from the Actions tab
+    # Runs at 08:00 UTC every Sunday (prevents exceeding the 50 calls/month API quota)
+    - cron: '0 8 * * 0'
+  workflow_dispatch:
 
 permissions:
-  contents: write # Required to push the updated CSV back to the repo
+  contents: write
 
 jobs:
   scrape-flights:
@@ -32,13 +32,6 @@ jobs:
           PRICE_THRESHOLD_PER_PERSON: ${{ secrets.PRICE_THRESHOLD_PER_PERSON }}
         run: python main.py
 
-      - name: Upload Debug Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: flight-json-log
-          path: debug_flight.json
-
       - name: Commit and Push Updated Dataset
         run: |
           git config --local user.email "action@github.com"
@@ -47,4 +40,3 @@ jobs:
           git commit -m "Action: Update flight history dataset" || echo "No changes to commit"
           git pull --rebase origin main
           git push
-          
