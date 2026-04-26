@@ -2,8 +2,7 @@ name: Automated Flight Tracker
 
 on:
   schedule:
-    # Runs at 10:00 UTC every Monday
-    - cron: '0 10 * * 1'
+    - cron: '0 10 1 * *'
   workflow_dispatch:
 
 permissions:
