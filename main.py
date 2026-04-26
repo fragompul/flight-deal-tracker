@@ -136,14 +136,14 @@ def main():
                 
                 for flight in flights:
                     try:
-                        # MODO DEPURACIÓN: Imprimir la estructura del primer vuelo
+                        # MODO DEPURACIÓN: Guardar la estructura en un archivo
                         import json
-                        print("ESTRUCTURA DEL VUELO ENCONTRADA:")
-                        print(json.dumps(flight, indent=2))
-                        # Forzamos un error intencionado para detener el script y no gastar cuota
-                        raise SystemExit("Ejecución detenida intencionadamente para leer el log.")
+                        with open("debug_flight.json", "w", encoding="utf-8") as f:
+                            json.dump(flight, f, indent=2)
                         
-                        # (El código de extracción original irá aquí una vez conozcamos la estructura)
+                        print("Archivo debug_flight.json generado correctamente.")
+                        # Forzamos salida limpia para que GitHub Actions continúe al siguiente paso
+                        raise SystemExit(0) 
                         
                     except Exception as e:
                         print(f"Data mapping error: {e}")
