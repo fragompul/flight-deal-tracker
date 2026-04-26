@@ -59,7 +59,7 @@ df = load_and_clean_data()
 # -----------------------------------------------------------------------------
 # App Layout - Header
 # -----------------------------------------------------------------------------
-st.title("Aviation Data Pipeline: Price Analytics")
+st.title("Flight Deal Tracker")
 st.markdown("Interactive dashboard monitoring historical flight prices and optimal routing combinations.")
 
 if df.empty:
