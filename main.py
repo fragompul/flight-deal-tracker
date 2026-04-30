@@ -9,14 +9,14 @@ from datetime import datetime, timedelta
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-PRICE_THRESHOLD_PER_PERSON = float(os.getenv("PRICE_THRESHOLD_PER_PERSON", 650))
+PRICE_THRESHOLD_PER_PERSON = float(os.getenv("PRICE_THRESHOLD_PER_PERSON", 850))
 
 # API Configuration
 RAPIDAPI_HOST = "booking-com15.p.rapidapi.com"
 API_URL = f"https://{RAPIDAPI_HOST}/api/v1/flights/searchFlights"
 
 # Trip Configuration
-ORIGIN = "MAD"
+ORIGIN = "SVQ"
 DESTINATIONS = ["PEK", "PVG"]
 NIGHTS = [14, 15, 16]
 ADULTS = 4
@@ -224,7 +224,7 @@ def main():
                         ])
                         
                         if price_per_person <= PRICE_THRESHOLD_PER_PERSON:
-                            meets_ideal_criteria = (max_stops <= 1) and (outbound_h <= 18) and (inbound_h <= 18)
+                            meets_ideal_criteria = (max_stops <= 1) and (outbound_h <= 20) and (inbound_h <= 20)
                             
                             warning_tag = ""
                             if not meets_ideal_criteria:
